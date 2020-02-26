@@ -1,0 +1,226 @@
+---
+title: "Zomato"
+author: "NITHIN C"
+date: "26/02/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(openxlsx)
+library(dplyr) # for data wrangling
+library(readr)
+library(mice) # for dealing with missing values
+library(ggplot2) # for visualization and EDA
+library(caret) # for training and turning models
+library(xgboost) # our prediction algorithm
+library(naniar) # for dealing with missing values
+library(visdat) # for visualizing data
+library(simputation) # for dealing with missing values
+library(tidyr) # for data wrangling
+#library(ggmap) # for visualizing maps
+library(Matrix) # for one-hot encording data
+library(reshape2) # for reshaping data
+```
+
+```{r}
+ library(readxl)
+zomato_train <- read_excel("zomato_train.xlsx")
+View(zomato_train)
+ zomato<-zomato_train
+ glimpse(zomato)
+```
+
+```{r}
+#URL will not be of use, so we can remove that.
+
+zomato$url<-NULL
+unique_names <- as.data.frame(table(zomato$name))
+glimpse(unique_names)
+
+#So we have 8487 unique names, Considering that the dataset contains over 50 000 values, there are a lot of chains with similarly named restaurants.
+
+#Online_order specifies whether or not the restaurant offers online ordering. This should be a yes/no factor, and we will keep it.
+
+zomato$online_order <- as.factor(zomato$online_order)
+glimpse(zomato$online_order)
+
+#The same applies to book_table.
+
+zomato$book_table <- as.factor(zomato$book_table)
+glimpse(zomato$book_table)
+
+#For rate
+# First we are going to remove the /5, and then we will introduce NAs by converting it to a numeric.
+
+library(ggplot2)
+ggplot(zomato, aes(x = rate))+
+  geom_histogram(stat = "count")+
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Overview of rate by count")
+```
+
+
+```{r}
+zomato$rate <- gsub("/5", "", zomato$rate)
+zomato$rate <- as.numeric(zomato$rate)
+zom_sub1 <- subset(zomato[1:25000,])
+zom_sub2 <- subset(zomato[25001:51717,])
+vis_miss(zom_sub1)
+vis_miss(zom_sub2)
+```
+
+#Phone attribute is of no use
+```{r}
+zomato$phone <- NULL
+unique_names <- as.data.frame(table(zomato$location))
+zomato$location <- as.factor(zomato$location)
+
+#location is  a factor, and it has 94 unique names, so we converted it to a factor.
+zomato$rest_type <- as.factor(zomato$rest_type)
+glimpse(zomato$rest_type)
+
+#dish liked
+ #About 54 % of the observations lack data in this variable, and some observations have multiple dishes.
+
+zomato$dish_liked <- NULL
+zomato$cuisines <- as.factor(zomato$cuisines)
+zomato$approx_cost.for.two.people. <- as.numeric(zomato$approx_cost.for.two.people.)
+
+```
+
+```{r}
+zomato$reviews_list <- NULL
+zomato$menu_item <- NULL
+
+df1 <- zomato %>% select(c("location", "listed_in.city."))
+df1$equal <- ""
+df1$equal <- df1$location == df1$listed_in.city.
+table(df1$equal)
+zomato$listed_in.city. <- as.factor(zomato$listed_in.city.)
+```
+
+```{r}
+zomato %>%
+    bind_shadow() %>%
+    ggplot(aes(x = rate_NA))+
+    geom_bar(aes(fill = rate_NA))+
+    facet_wrap(factor(zomato$listed_in.city.))+
+    scale_x_discrete(labels = c("Not missing", "Missing"))+
+    theme(plot.title = element_text(hjust = 0.5),axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x=element_blank(), legend.position = "none")+
+    ylab("Number of missing values per neighbourhood")+
+        ggtitle("Missingness across neighbourhoods")
+
+
+zomato$cuisines <- as.factor(zomato$cuisines)
+ glimpse(zomato$cuisines)
+ zom_cuis <- as.data.frame(table(zomato$cuisines))
+ zom_cuis1a <- head(zom_cuis[order(zom_cuis$Freq, decreasing=TRUE), ], 15)
+zom_cuis1a
+```
+
+```{r}
+df1 <- as.data.frame(table(zomato$name))
+df1 <- df1[order(-df1$Freq),]
+df1 <- head(df1, 15)
+ggplot(df1, aes(x= reorder(Var1, -Freq), y = Freq))+
+  geom_col(fill = "Lightblue")+
+  labs(x = "Restaurant names", y = "Number of outlets")+
+  ggtitle("Number of outlets by chains")+
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 45, hjust = 1))
+
+#It looks like Cafe Coffee Day is the most spread out chain, followed by Onesta and Just Bake
+
+
+df2 <- as.data.frame(table(zomato$location))
+df2 <- df2[order(-df2$Freq),]
+df2 <- head(df2, 15)
+ggplot(df2, aes(x= reorder(Var1, -Freq), y = Freq))+
+  geom_col(fill = "Lightblue")+
+  labs(x = "Location", y = "Number of restaurants")+
+  ggtitle("Number of restaurants by location")+
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Looks like BTM (Bommanhalli, Tavarekere and Madiwala Layout) is the most popular, having about twice the amount of restaurants than number two, which is HSR (Hosur-Sarjapur Road Layout). The number three spot is occupided by Koramangala 5th Block
+```
+
+
+Cleaning Data
+
+```{r}
+zomato[is.na(zomato)] <- "Missing" 
+zomato<-na.omit(zomato)
+```
+
+```{r}
+table(is.na(zomato))
+```
+```{r}
+zom_clean_test[is.na(zom_clean_test)]<-"Missing"
+zom_clean_test<-na.omit(zom_clean_test)
+table(is.na(zom_clean_test))
+zom_clean_train[is.na(zom_clean_train)]<-"Missing"
+zom_clean_train<-na.omit(zom_clean_train)
+table(is.na(zom_clean_train))
+```
+
+
+```{r}
+previous_na_action <- options('na.action')
+options(na.action='na.pass')
+set.seed(250111)
+assignment <- sample(1:2, size = nrow(zomato), prob = c(0.7, 0.30), replace = TRUE)
+zomato$cost_type <- NULL
+train <- zomato[assignment == 1, ]    # subset the full set to training indices only
+test <- zomato[assignment == 2, ]   # subset the full set to test indices only
+zomato$location<-NULL
+zomato$avg_cost<-as.integer(zomato$avg_cost)
+zomato$`approx_cost(for two people)`<-as.integer(zomato$`approx_cost(for two people)`)
+zom_clean_test <- select(test, colnames(test), -c(zomato$address,zomato$name,zomato$cuisines,zomato$online_order,zomato$location))
+zomato$votes<-NULL
+zom_clean_train <- select(train, colnames(train), -c(zomato$address,zomato$name,zomato$cuisines,zomato$online_order,zomato$votes,zomato$location))
+sparse_train_matrix <- sparse.model.matrix(zomato$`approx_cost(for two people)` ~ zomato$book_table,zomato$rest_type,zomato$`listed_in(city)`,zomato$avg_cost, data = zom_clean_train)[,-1]
+sparse_test_matrix <- sparse.model.matrix(zomato$`approx_cost(for two people)` ~ zomato$book_table,zomato$rest_type,zomato$`listed_in(city)`,zomato$avg_cost, data = zom_clean_test)[,-1]
+target1 <- zom_clean_train$`approx_cost(for two people)`
+ target1 <- as.matrix(target1)
+ target2 <- zom_clean_test$`approx_cost(for two people)`
+ target2 <- as.matrix(target2)
+```
+
+
+```{r}
+smm<-Matrix(sparse_test_matrix,sparse = TRUE)
+head(smm,2)
+```
+
+```{r}
+   d_sparse_train_matrix <- xgb.DMatrix(smm, label = target1,missing = NA)
+```
+```{r}
+dtest <- xgb.DMatrix(sparse_test_matrix, label = target2 )
+options(na.action=previous_na_action$na.action)
+```
+
+
+```{r}
+glimpse(d_sparse_train_matrix)
+glimpse(dtest)
+bst <- xgboost(data = sparse_train_matrix, label = target1, max_depth = 10,
+               eta = 0.037, nthread = 2, nrounds = 100,objective = "reg:linear")
+```
+
+We then check the importance matrix for the 10 most important variables in our model.
+
+```{r}
+importance_matrix <- xgb.importance(colnames(sparse_train_matrix))
+xgb.plot.importance(importance_matrix[1:10,])
+```
