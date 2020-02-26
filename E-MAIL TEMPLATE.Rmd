@@ -1,0 +1,43 @@
+
+
+```{r}
+library(stringi)
+library(readr)
+library(tibble)
+
+my_data<-read_csv("sample_email.csv")
+head(my_data,5)
+```
+
+```{r}
+library(data.table)
+sample_n(my_data,5)
+str(my_data)
+```
+
+```{r}
+Email_to<- sprintf("%s",my_data$email)
+SUbject_Line<-sprintf("%s",my_data$subject)
+Name<-sprintf("Hi %s %s,",my_data$first_name,my_data$last_name)
+Email_body<-sprintf("%s Please do contact me at %s",my_data$`Email Boby`,my_data$phone)
+thanks<-"Thanks,"
+Sender<-"Anonymous"
+```
+
+```{r}
+email1<-function(my_data){
+ 
+    resu=cat(sprintf("Email to : %s\n Subject Line : %s\n %s\n %s\n %s\n %s\n\n\n\n",Email_to,SUbject_Line,Name,Email_body,thanks,Sender))
+  return(resu)
+}
+```
+
+```{r}
+
+email1(my_data)
+```
+
+
+
+
+
